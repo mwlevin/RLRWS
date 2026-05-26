@@ -1,8 +1,9 @@
 class CavData:
-    def __init__(self, predicted_state, loc, spd):
+    def __init__(self, predicted_state, loc, spd, ff_spd):
         self.predicted_state = predicted_state
         self.loc = loc
         self.spd = spd
+        self.ff_spd = ff_spd
 
 class PredData:
     def __init__(self, pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, spd_pred_ego, predicted_tl_state, pos_ego, spd_ego):

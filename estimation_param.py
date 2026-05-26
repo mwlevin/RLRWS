@@ -2,13 +2,13 @@ import numpy as np
 from constants import *
 
 class UKFParam:
-    def __init__(self, num_cell, dt=0.2, dx=20, num_param=3, dt_simulation = 0.2):
+    def __init__(self, num_cell, dt=0.2, dx=20, num_param=3, dt_simulation = 0.2 ):
         self.num_cell = num_cell
         self.dt = dt
         self.dx = dx
         self.num_param = num_param
         # free flow speed
-        v0 = 28.78 
+        v0 = 24.5     # unit m/s 
         # maximum density
         rhomax = 0.16 
         # initial density
@@ -50,7 +50,7 @@ class UKFParam:
         self.rho_ub = rhomax
 
         self.v_lb = 0.0
-        self.v_ub = 30
+        self.v_ub = v0 + 1
 
         self.list_param_lb[PW_ID["c"], 0] = self.c_lb = 7
         self.list_param_ub[PW_ID["c"], 0] = self.c_ub = 13
@@ -92,3 +92,16 @@ class UKFParam:
         self.list_param_std[PW_ID["tau"], 0] = self.std_tau = 0.005*self.k_tau
         # measurement
         self.std_measure = 0.005*self.k_v
+
+
+    def update_ff_speed(self, ff_spd):
+        """Recompute everything that depends on free-flow speed."""
+        if ff_spd is None or ff_spd <= 0:
+            return  # ignore bad values
+        
+        self.v0 = ff_spd
+        # upper bound on velocity depends on v0
+        self.v_ub = self.v0 + 1
+        # transformed bounds depend on v_ub
+        self.v_lb_tf = (self.v_lb - self.b_v) * self.k_v
+        self.v_ub_tf = (self.v_ub - self.b_v) * self.k_v

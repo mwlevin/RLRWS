@@ -71,10 +71,10 @@ class IDM_Param():
 
         # initial values for parametrs + lower and upper bound for them
 # 24.016563642758417 1.6084034166031316 0.9449282323439725 2.5 16.016849585586613
-        self.s0 = [4]     # min gap
+        self.s0 = [5]     # min gap
 
 
-        self.a = [1.61]         # acceleration
+        self.a = [1.2]         # acceleration
 
 
         self.b = [0.94]   # deceleration
@@ -83,23 +83,23 @@ class IDM_Param():
         self.T = [2.5]          # time headway
 
 
-        self.v0 = [30]  # desired speed (free flow speed)
+        self.v0 = [24.5]  # desired speed (free flow speed)
         
-        self.d = [2]
+        self.d = [0.1]
         
         self.c = [1]
 
         self.delta = 2  # changed to test
-        self.epsilon = 0.0001
+        self.epsilon = 0.0000001
         self.small_num = 1
         
         self.small_num_warning = 0.3
 
         
-        self.it = 51   # number of iterations 
+        self.it = 101   # number of iterations 
         self.iteration = np.arange(0, self.it, 1)
         self.dxx = 0.02
-        self.mu = 0.0005   # step size
+        self.mu = 0.005   # step size
         self.buffer = 1.3  # a confidence buffer greater than 1
         self.high_buffer = 1.2
         self.lb = 1  # a lower bound for a, b, T, s0 values
@@ -109,14 +109,14 @@ class IDM_Param():
         self.lb_dec = 0.5
         self.ub_dec = 4.5
         self.lb_time = 0.5
-        self.ub_time = 6
+        self.ub_time = 2
         
-        self.lb_d = 0
+        self.lb_d = 0.08
     
-        self.ub_d = 10
+        self.ub_d = 2
         
-        self.lb_c = -5
-        self.ub_c = 5
+        self.lb_c = 0.8
+        self.ub_c = 2
         
     def set_a (self, a_cal):
         self.a = [a_cal]
@@ -184,7 +184,7 @@ class Veh_Parameter:
         # length of typical car
         self.car_len = 5
         # small value
-        self.epsilon = 0.00001
+        self.epsilon = 0.00000001
         # max spacing
         self.max_spacing = self.max_spd * 3.5
 

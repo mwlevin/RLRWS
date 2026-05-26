@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from time_convert import *
 from coord2dist import *
 import socket
+import os
 
 import datetime
 import socket
@@ -17,8 +18,24 @@ from estimation_param import *
 from est_pred_param import *
 from warning import *
 import keyboard
+import pandas as pd
+from calibrate_gradient_adaptive_step import *
+from ILC_constants import *
+
+# for ILC
+import time
+
+# Add these before the main while loop
+last_calibration_time = time.time()
+CALIBRATION_INTERVAL = 10  # seconds
+
+# we have 3 csv files: 1) record_data just for all recordings,  2) calibrate_data which is pre_filled, used for ILC calibration, 3) ilc_params_log which logs the parameters 
+Record_data = "record_data.csv"
+Calibrate_data = "calibrate_data.csv"
+ILC_params_file = "ilc_params_log.csv"
 
 
+Yellow_limit = 30  # at warning = 30, we switch from yellow to red
 
 HOST_REC = ""
 PORT_REC = 10889
@@ -36,17 +53,7 @@ HOST_SEND = 'localhost'
 PORT_SEND = 10890
 s_send = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-HOST_SEND1 = 'localhost'
-PORT_SEND1 = 10891
-s_send1 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-HOST_SEND2 = 'localhost'
-PORT_SEND2 = 10892
-s_send2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-HOST_SEND3 = 'localhost'
-PORT_SEND3 = 10893
-s_send3 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+spd_ego_prev = 30
 
 
 current_time = datetime.datetime.now()
@@ -56,16 +63,102 @@ sim_param = SimParameter()
 warning_list = []
 cav_msg_list=[]
 prediction_list = []
-pos_ego = 0
+pos_ego = 2000
+rows = []   # will hold data for dataframe
+ILC_params = []
+
+# set ILC parameters:
+a_cal = 1 * 1.2
+d_cal = 0.1
+c_cal = 0.9
+T_cal = 0.863
+J_final1 = 10000
+v0 =  24.5
+delta = IDM_Param().delta
+
+warning_showed = 0
+
+# save ILC params for start
+ILC_params.append({
+    "timestamp": current_time,
+    "a_cal": a_cal,
+    "d_cal": d_cal,
+    "c_cal": c_cal,
+    "T_cal": T_cal
+})
+
+
+def extract_first_tl(tl_str):
+    return float(str(tl_str).strip().replace('[','').replace(']','').split()[0])
+
+
+# check if we are very close to intersection, low speed, and red light
+def passer(pos_ego, spd_ego, predicted_tl_state):
+    original_pos_ego = -pos_ego
+    original_spd_ego = spd_ego
+
+    if -original_pos_ego >= 0 and -original_pos_ego <= 500:
+        tl_status_in_range = [predicted_tl_state[0, 0]]
+    else:
+        tl_status_in_range = []
+
+    if -original_pos_ego >= 0 and -original_pos_ego <= 500:
+        if -original_pos_ego <= 60 and original_spd_ego <= 4 and tl_status_in_range[0] == 0:
+            check_if = True
+        else:
+            check_if = False
+    else:
+        check_if = False
+
+    return check_if
+
+
+
+
+def load_ilc_data(csv_path):
+    """Read ILC_data.csv and return lists needed for calibration."""
+    import re
+    df = pd.read_csv(csv_path, quoting=1, engine='python')
+
+    pos_ego_list  = df['pos_ego'].tolist()
+    spd_ego_list  = df['spd_ego'].tolist()
+    warning_list  = df['warning_2'].tolist()  # primary warning channel (same as before)
+
+    # all 6 warning channels, in case downstream needs them
+    warning_cols = ['warning_0','warning_1','warning_2',
+                    'warning_3','warning_4','warning_5']
+    warning_matrix = df[warning_cols].values.tolist()   # list of 6-element lists
+
+    computed_warning_list = df['computed_warning'].tolist()
+
+    def extract_first_tl(tl_str):
+        numbers = re.findall(r'[\d.]+', str(tl_str))
+        return float(numbers[0]) if numbers else 1.0
+    tls_list = df['predicted_tl_state'].apply(extract_first_tl).tolist()
+
+    # acc_ego: delta_spd / 1s, first = 0
+    acc_list = [0.0]
+    for i in range(1, len(spd_ego_list)):
+        acc_list.append(spd_ego_list[i] - spd_ego_list[i-1])
+
+    spd_ego_list, acc_list = smooth_signals(spd_ego_list, acc_list, window=5)
+
+    # spacing = pos_ego (distance to stop bar)
+    spacing_list = pos_ego_list
+
+    return warning_list, acc_list, spd_ego_list, spacing_list, tls_list
 
 while True:
-    if pos_ego<=-50:
-        break
+    #if pos_ego<-5:  # edited to be able to go to a loop
+    #    break
+    start = time.time()
     current_time = datetime.datetime.now()
     if ((current_time - last_time).total_seconds()) >= 1:
         last_time = current_time
         newestData_predicted = None
+        # newestData_msg = None        # add this line
         keepReceiving = True
+        # print(" hheeeeeeyyyyy")
         while keepReceiving:
             try:
                 data_predicted, fromAddr = s_rec.recvfrom(500000)
@@ -73,12 +166,20 @@ while True:
                 if data_predicted:
                     newestData_predicted = data_predicted
                 if data_msg:
+                    # print("msg received ", data_msg )
                     newestData_msg = data_msg
+                    
+                
             except socket.error as why:
-                # keepReceiving = False
+                keepReceiving = False
                 break
         if newestData_msg:
             msg_data=pkl.loads(newestData_msg)
+            ff_spd = msg_data.ff_spd
+            # update ff_speed
+            # ---- NEW: push fresh free-flow speed into UKF params ----
+            # ukf_param.update_ff_speed(data_orig.ff_spd)
+            
             cav_msg_list.append(msg_data)
         if newestData_predicted:
             data_orig = pkl.loads(newestData_predicted)
@@ -89,28 +190,183 @@ while True:
             predicted_tl_state = data_orig.predicted_tl_state
             pos_ego = data_orig.pos_ego
             spd_ego = data_orig.spd_ego
-
-            print('current_tl',predicted_tl_state[0])
-
-            # a function to send dynamics for plotting
-           # def dynamics_sender():
-           #     return pos_ego, spd_ego, predicted_tl_state
-            pos_ego_obj=pkl.dumps(pos_ego)
-            spd_ego_obj=pkl.dumps(spd_ego)
-            predicted_tl_state_obj=pkl.dumps(predicted_tl_state)
-            warning_signal = warning(pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, pos_ego, spd_ego, spd_pred_ego, predicted_tl_state, sim_param)
+            if pos_ego<500:
+                warning_signal = warning(pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, pos_ego, spd_ego, spd_pred_ego, predicted_tl_state, sim_param)
+            else:
+                warning_signal=np.zeros((50))
             warning_signal_obj = pkl.dumps(warning_signal)
-            print('wraning send', warning_signal[0:5])
+            # print('wraning send', warning_signal[0:5])
             warning_list.append(warning_signal)
             prediction_list.append(data_orig)
-            s_send.sendto(warning_signal_obj, (HOST_SEND, PORT_SEND))
-            s_send1.sendto(pos_ego_obj, (HOST_SEND1, PORT_SEND1))
-            s_send2.sendto(spd_ego_obj, (HOST_SEND2, PORT_SEND2))
-            s_send3.sendto(predicted_tl_state_obj, (HOST_SEND3, PORT_SEND3))
-with open("record_data25/warning_list.obj", "wb") as handle:
-    pkl.dump(warning_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
-with open("record_data25/cav_msg_list.obj", "wb") as handle:
-    pkl.dump(cav_msg_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
-with open("record_data25/prediction_list.obj", "wb") as handle:
-    pkl.dump(prediction_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
-sys.exit()
+            
+            
+            
+
+            
+            
+            
+            acc_ego = (spd_ego - spd_ego_prev) / 1  # calculate acceleration based on current and previous speed, assuming dt=1s for simplicity
+            
+            # s_send.sendto(warning_signal_obj, (HOST_SEND, PORT_SEND))
+            
+            
+            print('ff_spd',ff_spd)
+            
+            # find the warning value to be presented to the driver, look 2 time steps ahead (0.4 seconds) to consider reaction time
+            warning_showed = rev_warning_calc(v0, delta, warning_signal[2], acc_ego, spd_ego, pos_ego,predicted_tl_state[0][0] , a_cal , d_cal, c_cal, T_cal)
+            
+            # check where very small warning values
+            if warning_signal[0] < 1 and warning_signal[1] < 1 and warning_signal[2] < 1:
+                warning_showed = 0
+                
+            if warning_showed < 0.01:
+                warning_showed = 0
+            
+            if warning_showed > 100:
+                warning_showed = 100
+            if pos_ego >2.5*30+30**2/(2*3.414):
+                warning_showed=0
+                
+            # if wrong detected to be very close to intersection, we set warning to 0 to avoid false positive
+            if pos_ego < 2 and spd_ego > 18:
+                warning_showed = 0
+                warning_signal[0] = 0
+                
+                
+                
+            # enforce passer filter: red message
+            if passer(pos_ego, spd_ego, predicted_tl_state):
+                warning_signal[0] = Yellow_limit + 5  
+                warning_showed = warning_signal[0]
+                
+                  
+            # send warning value for plotting
+            print("MPC warning ", warning_signal[0])
+            print('warning_showned',warning_showed)
+            # Send warning_showed to port 10890
+            #warning_showed_obj = pkl.dumps(warning_showed)
+            
+            
+            # Scalar - just send MPC warning for now, later we should send ILC warning instead, 
+            warning_showed_obj = pkl.dumps(warning_signal[0])
+            s_send.sendto(warning_showed_obj, (HOST_SEND, PORT_SEND))
+
+            
+            # print("warning shown ", warning_showed)
+            # save data for dataframe ILC, 11 elements
+            rows.append({
+            "timestamp": current_time,
+            "pos_ego": pos_ego,
+            "spd_ego": spd_ego,
+            "warning_0": warning_signal[0],
+            "warning_1": warning_signal[1],
+            "warning_2": warning_signal[2],
+            "warning_3": warning_signal[3],
+            "warning_4": warning_signal[4],
+            "warning_5": warning_signal[5],
+            "predicted_tl_state": predicted_tl_state  ,
+            "computed_warning": warning_showed}    )
+            
+            # set previous speed for next iteration
+            spd_ego_prev = spd_ego
+            
+            
+            # Write to CSV (append mode so we don't lose history)
+            df_new = pd.DataFrame([rows[-1]])
+            write_header = not os.path.exists(Record_data)
+            df_new.to_csv(Record_data, mode='a', header=write_header, index=False)
+            # print(f"[ILC] Row saved to {Calibrate_data}")
+            
+            # write to calibrate_data only if we have a warning
+            if warning_signal[0] > 0.01 and warning_signal[1] > 0.01:
+                df_warning = pd.DataFrame([rows[-1]])
+                write_header = not os.path.exists(Calibrate_data)
+                df_warning.to_csv(Calibrate_data, mode='a', header=write_header, index=False)
+            
+            
+            # --- Every 10 seconds: save data + recalibrate ---
+            now = time.time()
+            
+            
+            if now - last_calibration_time >= CALIBRATION_INTERVAL:
+                last_calibration_time = now
+                # Recalibrate
+                try:
+                    if os.path.exists(Calibrate_data):
+                        start = time.time()  # ← start timing HERE, right before calibration
+                        warning_ilc, acc_ilc, spd_ilc, spacing_ilc, tls_ilc = load_ilc_data(Calibrate_data)
+                        # print(" loaded data " , spd_ilc)
+                        if len(warning_ilc) > 5:
+                            print(f"[ILC] Running calibration on {len(warning_ilc)} samples...")
+                            
+                            a_cal1, d_cal1, c_cal1, T_cal1, J_final1 = mainIDM(
+                                v0, delta,
+                                warning_ilc, acc_ilc, spd_ilc, spacing_ilc, tls_ilc
+                            )
+
+                            finish = time.time() - start  # ← now this correctly measures mainIDM duration
+                            # print(f"time took {finish:.3f}s, current time: {time.time()}")
+                            
+                            
+                            # save ILC params once updated
+                            ILC_params.append({
+                                "timestamp": current_time,
+                                "a_cal": a_cal1,
+                                "d_cal": d_cal1,
+                                "c_cal": c_cal1,
+                                "T_cal": T_cal1
+                            })
+
+                            a_cal = (a_cal1*0.7+a_cal*0.3)
+                            d_cal = (d_cal*0.3+d_cal1*0.7)
+                            c_cal = (c_cal *0.3+ c_cal1* 0.7)
+                            T_cal = (T_cal *0.3+ T_cal1 *0.7)
+                            print(f"[ILC] Done. a={a_cal:.4f} d={d_cal:.4f} c={c_cal:.4f} T={T_cal:.4f}")
+                        else:
+                            print("[ILC] Not enough data yet.")
+                except Exception as e:
+                    print(f"[ILC] Calibration error: {e}")
+                
+            
+            # --- Save updated ILC params to CSV ---
+            df_ilc = pd.DataFrame([{
+                "timestamp":  current_time,
+                "a_cal":      a_cal,
+                "d_cal":      d_cal,
+                "c_cal":      c_cal,
+                "T_cal":      T_cal,
+                "J_final":    J_final1
+            }])
+            write_header_ilc = not os.path.exists(ILC_params_file) or os.path.getsize(ILC_params_file) == 0
+            df_ilc.to_csv(ILC_params_file, mode='a', header=write_header_ilc, index=False)            
+    
+
+
+
+# # save data to csv for ILC training            
+# df = pd.DataFrame(rows)
+
+# csv_path = "warning_log.csv"
+# df.to_csv(csv_path, index=False)
+
+# print(f"CSV successfully saved to {csv_path}")
+
+
+
+# df_param = pd.DataFrame(ILC_params)
+# csv_path = "ILC_log.csv"
+# df_param.to_csv(csv_path, index=False)
+
+# print(f"CSV successfully saved to {csv_path}")
+
+            
+# with open("record_data18/warning_list.obj", "wb") as handle:
+#     pkl.dump(warning_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
+# with open("record_data18/cav_msg_list.obj", "wb") as handle:
+#     pkl.dump(cav_msg_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
+# with open("record_data18/prediction_list.obj", "wb") as handle:
+#     pkl.dump(prediction_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
+# sys.exit()
+
+
+# to extract the first value of the predicted traffic light state for plotting

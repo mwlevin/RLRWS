@@ -15,6 +15,7 @@ def v_dot_value(v0, delta, warning, acc_ego , spd_ego, spacing_ego, tls, a_fix ,
 
 # find the value of w (inside IDM paranthesis), used for finding v_dot
 def w_value(v0, delta, spd, spacing, tls, T):
+    spacing = max(spacing , 5)
     if tls == 1: # traffic light to be green, spacing is easier
         w = w = 1 - (spd/v0)**delta - ( (spacing ) / (spacing) )**2
     
@@ -97,7 +98,7 @@ class Derivation_class:
     
         # function gets derivative in terms of a, parametrs are d , c , T , other argumets are just number (scalar)
     def T_derivative(self, v0, delta, warning, acc_ego , spd_ego, spacing_ego, tls, a_fix , d_fix, c_fix, T_fix):
-
+        spacing_ego = max(5, spacing_ego)
         # check value of a
         # if (1 - (speed / v0_value)**delta - (accel / a_value)) <= 0:
         #     a_value = accel / (1 - ((speed / v0_value)**delta )) * self.buffer2

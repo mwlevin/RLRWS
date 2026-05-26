@@ -1,6 +1,16 @@
 import pickle as pkl
 import time
-from pycmssdk import Asn1Type, FacMsgType, FacNotifData, asn1_decode, create_cms_api
+# from pycmssdk import Asn1Type, FacMsgType, FacNotifData, asn1_decode, create_cms_api
+
+from pycmssdk import FacMsgType, FacNotifData,create_cms_api
+from pycmssdk import FacMsgType, FacNotifData,  create_cms_api
+
+# from pycmssdk import Asn1Type, asn1_decode
+
+from pycmssdk.asn1 import Asn1Type
+
+from pycmssdk.asn1 import asn1_decode
+
 import dpkt
 import socket
 import os
@@ -65,7 +75,7 @@ error_status = ["dark", "unavailable"]
 
 
 # load the pcap file
-filename='0302.pcap'
+filename='test_march12_traj.pcap'
 # option 'rb' is needed for windows OS
 f = open(filename,'rb')
 pcap = dpkt.pcap.Reader(f)

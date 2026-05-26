@@ -137,9 +137,9 @@ def warning(pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, pos_ego, spd_ego, 
         )
     #print('pos_ego',-original_pos_ego)
     if -original_pos_ego >= 0 and -original_pos_ego<=500:
-        print('pos_ego',-original_pos_ego)
-        print('spd_ego',original_spd_ego)
-        print('tl_status',tl_status_in_range[0])
+        # print('pos_ego',-original_pos_ego)
+        # print('spd_ego',original_spd_ego)
+        # print('tl_status',tl_status_in_range[0])
         if  -original_pos_ego <=60 and original_spd_ego<=4 and tl_status_in_range[0]==0: 
             warning_signal=np.zeros((50))
         else:

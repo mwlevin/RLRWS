@@ -16,7 +16,7 @@ from estimation_param import *
 from est_pred_param import *
 import keyboard
 
-import pygame
+#import pygame
 
 HOST_REC = ""
 PORT_REC = 10888
@@ -55,7 +55,7 @@ last_time = current_time
 s_rec.setblocking(False)
 #cav_msg_list=[]
 #prediction_list = []
-pos_ego = 0
+pos_ego = 1000
 while True:
     if pos_ego<=-50:
         break
@@ -81,7 +81,13 @@ while True:
             data_orig = pkl.loads(newestData)
             spd_ego = data_orig.spd
             pos_ego = data_orig.loc
+            ff_spd = data_orig.ff_spd
             predicted_tl_state = data_orig.predicted_state
+            
+            # update ff_speed
+            # ---- NEW: push fresh free-flow speed into UKF params ----
+            ukf_param.update_ff_speed(data_orig.ff_spd)
+            
             pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, spd_pred_ego = prediction(
                 pos_ego, spd_ego, predicted_tl_state, filter_ukf, ukf_param, sim_param
             )
@@ -94,6 +100,7 @@ while True:
           #  print('prediction', pos_pred_ego[0:5,0])
             s_send.sendto(pred_data_obj, (HOST_SEND, PORT_SEND))
             s_send1.sendto(msg_data_obj, (HOST_SEND1, PORT_SEND1))
+            print(" sent workss")
 #with open("record_data6/cav_msg_list.obj", "wb") as handle:
 #    pkl.dump(cav_msg_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
 #with open("record_data6/prediction_list.obj", "wb") as handle:

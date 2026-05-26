@@ -1,3 +1,5 @@
+from email.mime import base
+
 import numpy as np
 import os
 import sys
@@ -104,7 +106,7 @@ def dGradient_dT(v0, delta, warning, acc_ego , spd_ego, spacing_ego, tls, a_fix 
     dJ = dJ/ len(spacing_ego)
     return dJ
 
-print("derivative functions are defined")
+# print("derivative functions are defined")
 
 
 
@@ -116,7 +118,7 @@ def J(v0, delta, warning, acc_ego , spd_ego, spacing_ego, tls, a_fix , d_fix, c_
         # function from eq 4
         J = J + ( acc_ego[i] - v_dot_value(v0, delta, warning[i] , acc_ego[i], spd_ego[i], spacing_ego[i], tls[i], a_fix, d_fix, c_fix, T_fix) )**2 
 
-    
+    # print( "len spacing is ", len(spacing_ego) , " J is ", J)
     J = J/ len(spacing_ego)
     return J
 
@@ -132,7 +134,9 @@ def v_dot_value(v0, delta, warning, acc_ego , spd_ego, spacing_ego, tls, a_fix ,
     
 
 # find the value of w (inside IDM paranthesis), used for finding v_dot
+s0 = IDM_Param().s0[0]
 def w_value(v0, delta, spd, spacing, tls, T):
+    spacing = max(5, spacing)
     if tls == 1: # traffic light to be green, spacing is easier
         w = w = 1 - (spd/v0)**delta - ( (0 ) / (spacing) )**2
     
@@ -141,7 +145,7 @@ def w_value(v0, delta, spd, spacing, tls, T):
             w = w = 1 - (spd/v0)**delta - ( (0 ) / (spacing) )**2
         
         else:
-            w = 1 - (spd/v0)**delta - ( (spacing + spd * T) / (spacing) )**2
+            w = 1 - (spd/v0)**delta - ( (s0 + spd * T) / (spacing) )**2
     # print("w is ", w)
     return w
 
@@ -155,7 +159,7 @@ J_prev = 10e11
 
 
 # main calibration function
-def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
+def mainIDM(ff_spd, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
 
     step = 0
     params = IDM_Param()
@@ -164,13 +168,16 @@ def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
     d_val = params.d[0]
     c_val = params.c[0]
     T_val = params.T[0]
-    v0    = params.v0[0]
+    v0    = ff_spd
 
     # Bounds
     min_a, max_a = params.lb_ac,   params.ub_ac    # [0.5, 4.5]
     min_d, max_d = params.lb_d,    params.ub_d     # [-10, 10]
     min_c, max_c = params.lb_c,    params.ub_c     # [-5,  5]
     min_T, max_T = params.lb_time, params.ub_time  # [0.5, 6]
+
+    print("0 sss calibration")
+
 
     def clamp(val, lo, hi):
         return max(lo, min(hi, val))
@@ -181,22 +188,29 @@ def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
     J_prev = float('inf')
     J_actual = J(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls,
                  a_val, d_val, c_val, T_val)
-    print(f"Initial J: {J_actual:.6f}  a: {a_val}  d: {d_val}  c: {c_val}  T: {T_val}")
+    # print(f"Initial J: {J_actual:.6f}  a: {a_val}  d: {d_val}  c: {c_val}  T: {T_val}")
+
 
     while step < it:
 
         if abs(J_actual - J_prev) < epsilon:
             print(f"Converged at step {step}, J={J_actual:.6f}")
             break
-
+        
+        print("jjjj")
         # --- Compute raw gradients ---
         G_a = dGradient_da(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_val, d_val, c_val, T_val)
+        # print("gradients a", G_a )
         G_d = dGradient_dd(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_val, d_val, c_val, T_val)
+        # print("gradients d" , G_d , G_c , G_T )
         G_c = dGradient_dc(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_val, d_val, c_val, T_val)
+        # print("gradients c", G_c )
         G_T = dGradient_dT(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_val, d_val, c_val, T_val)
-
+        # print("gradients T",  G_T )
         # --- Normalize gradient to unit vector (prevents exploding steps) ---
         grad_norm = (G_a**2 + G_d**2 + G_c**2 + G_T**2) ** 0.5
+
+        
         if grad_norm < 1e-10:
             print(f"Gradient vanished at step {step}. Stopping.")
             break
@@ -204,6 +218,8 @@ def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
         G_d_n = G_d / grad_norm
         G_c_n = G_c / grad_norm
         G_T_n = G_T / grad_norm
+
+        print("bbbb")
 
         print(f"\n  Gradients (raw):  G_a={G_a:.4f}  G_d={G_d:.4f}  G_c={G_c:.4f}  G_T={G_T:.4f}")
         print(f"  Gradients (norm): G_a={G_a_n:.4f}  G_d={G_d_n:.4f}  G_c={G_c_n:.4f}  G_T={G_T_n:.4f}")
@@ -233,6 +249,8 @@ def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
             mu /= 2
             ls_iter += 1
 
+        print("nnnnn")
+
         print(f"  Line search: {ls_iter} iters, mu={mu:.2e}, found={found}")
 
         if found:
@@ -244,15 +262,39 @@ def mainIDM(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls):
         else:
             print(f"Line search failed at step {step}, J={J_actual:.6f}. At local minimum or flat region.")
             break
-
+    
+    # ensure bounds are met
+    c_val = clamp(c_val, min_c, max_c)
+    d_val = clamp(d_val, min_d, max_d)
+    
+    print("calibrated ", a_val, d_val, c_val, T_val, J_actual)
     return a_val, d_val, c_val, T_val, J_actual
 
 
 
 # given a calibrated IDM model and warning, find the presented warning value to the driver, values are scalar (not lists)
 def rev_warning_calc(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_cal , d_cal, c_cal, T_cal):
-    mpc_acc = -1/20 * warning
-    u = (a_cal * w_value(v0, delta, spd_ego, spacing_ego, tls, T_cal) / d_cal) ** (1/c_cal) - (mpc_acc / d_cal) ** (1/c_cal)
+    mpc_acc = warning * -1/20
+    spacing_ego=max(spacing_ego, 4)
+    # u = ((a_cal * w_value(v0, delta, spd_ego, spacing_ego, tls, T_cal) - mpc_acc )/d_cal) ** (1/c_cal)
+
+    if warning <= 0:
+        u = 0
+
+    else:
+        base = (a_cal*w_value(v0, delta, spd_ego, spacing_ego, tls, T_cal) - mpc_acc) / d_cal
+        u = (abs(base) ** (1/c_cal)) * (1 if base >= 0 else -1)
+        
+        if u < 0:
+            u = 0
+
+
+    
+    # print('w value',w_value(v0, delta, spd_ego, spacing_ego, tls, T_cal))
+    # print('first term',(a_cal * w_value(v0, delta, spd_ego, spacing_ego, tls, T_cal) / d_cal) ** (1/c_cal),'second term',(mpc_acc / d_cal) ** (1/c_cal) )
+    # print('mpc_acc',mpc_acc)
+    # print('d_cal',d_cal)
+    # print('1/c_cal',1/c_cal)
     return u
 
 
@@ -268,77 +310,81 @@ def pred_acc(v0, delta, warning, acc_ego, spd_ego, spacing_ego, tls, a_cal , d_c
 
 
 
-# offline testing against vehicle data
-import pandas as pd
-import re
+# # offline testing against vehicle data
+# import pandas as pd
+# import re
 
-df = pd.read_csv('NS4218.csv')
+# df = pd.read_csv('calibrate_data_0319.csv')
 
-pos_ego           = df['pos_ego'].tolist()
-spd_ego           = df['spd_ego'].tolist()
-warning_0         = df['warning_0'].tolist()
+# pos_ego           = df['pos_ego'].tolist()
+# spd_ego           = df['spd_ego'].tolist()
+# warning_0         = df['warning_0'].tolist()
 
-def extract_first_tl(tl_str):
-    numbers = re.findall(r'[\d.]+', str(tl_str))
-    return float(numbers[0]) if numbers else None
+# def extract_first_tl(tl_str):
+#     numbers = re.findall(r'[\d.]+', str(tl_str))
+#     return float(numbers[0]) if numbers else None
 
-# 4. acc_ego list (acceleration = delta_spd / delta_t, timestep = 1s)
-acc_ego = [0.0]  # first step assumed 0
+# # 4. acc_ego list (acceleration = delta_spd / delta_t, timestep = 1s)
+# acc_ego = [0.0]  # first step assumed 0
 
-for i in range(1, len(spd_ego)):
-    acc = (spd_ego[i] - spd_ego[i-1]) / 1.0  # timestep = 1s
-    acc_ego.append(acc)
+# for i in range(1, len(spd_ego)):
+#     acc = (spd_ego[i] - spd_ego[i-1]) / 1.0  # timestep = 1s
+#     acc_ego.append(acc)
 
-# 5. traffic light status list (1 for green, 0 for red)
-predicted_tl_first = df['predicted_tl_state'].apply(extract_first_tl).tolist()
+# # 5. traffic light status list (1 for green, 0 for red)
+# predicted_tl_first = df['predicted_tl_state'].apply(extract_first_tl).tolist()
 
-print("data length is ", len(pos_ego), len(spd_ego), len(warning_0), len(predicted_tl_first))
-# print(" spacing is " , pos_ego)
-# print( " speed is ", spd_ego)
+# print("data length is ", len(pos_ego), len(spd_ego), len(warning_0), len(predicted_tl_first))
+# # print(" spacing is " , pos_ego)
+# # print( " speed is ", spd_ego)
 
-# test IDM
-a, d, c, T, J_final = mainIDM(v0, delta, warning_0 , acc_ego, spd_ego, pos_ego, predicted_tl_first)
-
-
-print("final values are ", a, d, c, T, J_final)
+# # test IDM
+# a, d, c, T, 
+#  = mainIDM(v0, delta, warning_0 , acc_ego, spd_ego, pos_ego, predicted_tl_first)
 
 
+# print("final values are ", a, d, c, T, J_final)
 
-# now check it against the second data file
-df2 = pd.read_csv('NS4218_2_clean.csv')
-pos_ego           = df2['pos_ego'].tolist()
-spd_ego           = df2['spd_ego'].tolist()
-warning_0         = df2['warning_0'].tolist()
 
-def extract_first_tl(tl_str):
-    numbers = re.findall(r'[\d.]+', str(tl_str))
-    return float(numbers[0]) if numbers else None
 
-# 4. acc_ego list (acceleration = delta_spd / delta_t, timestep = 1s)
-acc_ego = [0.0]  # first step assumed 0
+# # now check it against the second data file
+# df2 = pd.read_csv('calibrate_data_0319.csv')
+# pos_ego           = df2['pos_ego'].tolist()
+# spd_ego           = df2['spd_ego'].tolist()
+# warning_0         = df2['warning_0'].tolist()
 
-for i in range(1, len(spd_ego)):
-    acc = (spd_ego[i] - spd_ego[i-1]) / 1.0  # timestep = 1s
-    acc_ego.append(acc)
+# def extract_first_tl(tl_str):
+#     numbers = re.findall(r'[\d.]+', str(tl_str))
+#     return float(numbers[0]) if numbers else None
+
+# # 4. acc_ego list (acceleration = delta_spd / delta_t, timestep = 1s)
+# acc_ego = [0.0]  # first step assumed 0
+
+# for i in range(1, len(spd_ego)):
+#     acc = (spd_ego[i] - spd_ego[i-1]) / 1.0  # timestep = 1s
+#     acc = min(4, acc)
+#     acc = max(-4, acc)
+#     acc_ego.append(acc)
     
-# 5. traffic light status list (1 for green, 0 for red)
-predicted_tl_first = df['predicted_tl_state'].apply(extract_first_tl).tolist()
+# # 5. traffic light status list (1 for green, 0 for red)
+# predicted_tl_first = df['predicted_tl_state'].apply(extract_first_tl).tolist()
+
+
+
+def smooth_signals(spd_ego, acc_ego, window=5, plot=True):
+    """
+    Smooth spd_ego and acc_ego using rolling moving average.
+    window: number of samples to average (increase for more smoothing)
+    """
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    spd_smooth = pd.Series(spd_ego).rolling(window=window, center=True, min_periods=1).mean().tolist()
+    acc_smooth = pd.Series(acc_ego).rolling(window=window, center=True, min_periods=1).mean().tolist()
+
+
+    return spd_smooth, acc_smooth
+
+# # Usage — call after computing acc_ego, before passing to mainIDM
+# spd_ego, acc_ego = smooth_signals(spd_ego, acc_ego, window=5)
     
-# check acc values
-acc_pred_list = []
-for i in range(len(acc_ego)):
-    acc_pred = pred_acc(v0, delta, warning_0[i], acc_ego[i], spd_ego[i], pos_ego[i], predicted_tl_first[i], a, d, c, T)
-    acc_pred_list.append(acc_pred)
-    print("predicted acc is ", acc_pred, " actual acc is ", acc_ego[i])
-    
-    
-# plt.figure(figsize=(12, 5))
-# plt.plot(acc_ego,       label='Actual acc',    color='steelblue')
-# plt.plot(acc_pred_list, label='Predicted acc', color='tomato', linestyle='--')
-# plt.xlabel('Index')
-# plt.ylabel('Acceleration (m/s²)')
-# plt.title('Actual vs Predicted Acceleration')
-# plt.legend()
-# plt.grid(True)
-# plt.tight_layout()
-# plt.show()

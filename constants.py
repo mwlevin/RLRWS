@@ -24,7 +24,7 @@ CAR_ID = {
     # information below not used currently
     "angle": 8,
     "lc_prob": 9,
-    "v_max": 10,
+    "v_max": 20,
     "v_min": 11,
     "range_tl": 12,  # if not in the range of any traffic light
 }
