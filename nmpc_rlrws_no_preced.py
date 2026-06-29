@@ -92,7 +92,7 @@ def nmpc_no_preced(
         #     v_0=v_d,
         # )
         
-        acc = -U[U_DIM_W * i + U_ID_W["sig"]]/20
+        acc = -U[U_DIM_W * i + U_ID_W["sig"]]/25
         # acc = func_acc(U[U_DIM_W * i + U_ID_W["sig"]])
         
         

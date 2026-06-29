@@ -116,10 +116,10 @@ signal_phase_ids = {
     (4, 'NS'):   4,
     (4, 'SN'):   8,
     (4, 'WE'):   2,
-    (5, 'NESW'):  2,
-    (5, 'NWSE'):  2,
+    (5, 'NESW'):  8,
+    (5, 'NWSE'):  6,
     (5, 'SENW'):  2,
-    (5, 'SWNE'):  2,
+    (5, 'SWNE'):  4,
 }
 
 # -------------------------------------------------------------------
@@ -338,20 +338,111 @@ def build_reference_from_test_name(test_name,
 # -------------------------------------------------------------------
 # Approach / intersection detection 
 # -------------------------------------------------------------------
-def detect_reference_trajectory(live_points, reference_folder, n_points=5):
+def bearing_deg(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    dlon = lon2 - lon1
+    y = np.sin(dlon) * np.cos(lat2)
+    x = np.cos(lat1) * np.sin(lat2) - np.sin(lat1) * np.cos(lat2) * np.cos(dlon)
+    return (np.degrees(np.arctan2(y, x)) + 360) % 360
+
+
+def heading_difference_deg(heading_a, heading_b):
+    return abs((heading_a - heading_b + 180) % 360 - 180)
+
+
+def reference_heading_near(ref_lat, ref_lon, idx, window=5):
+    start = max(0, idx - window)
+    end = min(len(ref_lat) - 1, idx + window)
+    if start == end:
+        return None
+    return bearing_deg(ref_lat[start], ref_lon[start], ref_lat[end], ref_lon[end])
+
+
+def detect_reference_trajectory(
+        live_points,
+        reference_folder,
+        n_points=5,
+        exclude_intersection=None,
+        exclude_file=None,
+        live_heading_deg=None,
+        min_dist_to_stopbar=-5.0,
+        max_dist_to_stopbar=1600.0,
+        max_avg_distance_m=75.0,
+        max_heading_error_deg=60.0,
+        allow_gps_heading=True,
+        min_gps_heading_distance_m=3.0,
+        debug_csv_file=None,
+        debug_context=None):
     live_points = np.array(live_points[-n_points:])   # last N points
 
 
     best_match = None
     best_distance = np.inf
+    debug_rows = []
+    debug_context = debug_context or {}
+    live_heading = live_heading_deg
+    heading_source = "bsm" if live_heading is not None else "none"
+    heading_distance = None
+    if live_heading is None and allow_gps_heading and len(live_points) >= 2:
+        heading_distance = haversine(
+            live_points[0, 0], live_points[0, 1],
+            live_points[-1, 0], live_points[-1, 1],
+        )
+        if heading_distance >= min_gps_heading_distance_m:
+            live_heading = bearing_deg(
+                live_points[0, 0], live_points[0, 1],
+                live_points[-1, 0], live_points[-1, 1],
+            )
+            heading_source = "gps"
+
+    def add_debug_row(file, candidate_intersection=None, candidate_approach=None,
+                      avg_dist=None, inferred_last=None, ref_heading=None,
+                      heading_error=None, result="", reason="", selected=False):
+        if debug_csv_file is None:
+            return
+        debug_rows.append({
+            **debug_context,
+            "candidate_ref_file": os.path.basename(file) if file else None,
+            "candidate_intersection": candidate_intersection,
+            "candidate_approach": candidate_approach,
+            "live_heading_deg": live_heading,
+            "heading_source": heading_source,
+            "gps_heading_distance_m": heading_distance,
+            "ref_heading_deg": ref_heading,
+            "heading_error_deg": heading_error,
+            "heading_limit_deg": max_heading_error_deg,
+            "avg_distance_m": avg_dist,
+            "inferred_distance_to_stopbar": inferred_last,
+            "result": result,
+            "reason": reason,
+            "selected": selected,
+        })
 
     for file in glob.glob(f"{reference_folder}/*.csv"):
         df = pd.read_csv(file)
 
-        # # NEW: skip other approaches of the intersection we're leaving
-        # if exclude_intersection is not None and \
-        #    df["intersection_id"].iloc[0] == exclude_intersection:
-        #     continue
+        candidate_intersection = int(df["intersection_id"].iloc[0])
+        candidate_approach = df["approach_id"].iloc[0]
+
+        if exclude_file is not None and os.path.abspath(file) == os.path.abspath(exclude_file):
+            add_debug_row(
+                file,
+                candidate_intersection,
+                candidate_approach,
+                result="reject",
+                reason="excluded_same_ref_file",
+            )
+            continue
+
+        if exclude_intersection is not None and candidate_intersection == exclude_intersection:
+            add_debug_row(
+                file,
+                candidate_intersection,
+                candidate_approach,
+                result="reject",
+                reason="excluded_intersection",
+            )
+            continue
 
         ref_lat = df["lat"].values
         ref_lon = df["lon"].values
@@ -364,6 +455,16 @@ def detect_reference_trajectory(live_points, reference_folder, n_points=5):
             total_min_dist += np.min(dists)
 
         avg_dist = total_min_dist / len(live_points)
+        if avg_dist > max_avg_distance_m:
+            add_debug_row(
+                file,
+                candidate_intersection,
+                candidate_approach,
+                avg_dist=avg_dist,
+                result="reject",
+                reason="avg_distance_too_large",
+            )
+            continue
         
         
         # --- NEW: pairwise wrong-direction filter ----------------
@@ -372,21 +473,116 @@ def detect_reference_trajectory(live_points, reference_folder, n_points=5):
         inferred = np.array([
             distance_to_stopbar(lat, lon, ref_np)
             for lat, lon in live_points])
-        
-        # skip if the last 3 inferred distances are NOT consistently decreasing
-        if (inferred[-1] > inferred[-2] and
-                inferred[-2] > inferred[-3] ):
+
+        if inferred[-1] < min_dist_to_stopbar or inferred[-1] > max_dist_to_stopbar:
+            add_debug_row(
+                file,
+                candidate_intersection,
+                candidate_approach,
+                avg_dist=avg_dist,
+                inferred_last=inferred[-1],
+                result="reject",
+                reason="distance_to_stopbar_out_of_range",
+            )
             continue
 
+        ref_heading = None
+        heading_error = None
+        if live_heading is not None:
+            closest_idx = np.argmin(
+                haversine_np(live_points[-1, 0], live_points[-1, 1], ref_lat, ref_lon)
+            )
+            ref_heading = reference_heading_near(ref_lat, ref_lon, closest_idx)
+            if ref_heading is not None:
+                heading_error = heading_difference_deg(live_heading, ref_heading)
+                if heading_error > max_heading_error_deg:
+                    add_debug_row(
+                        file,
+                        candidate_intersection,
+                        candidate_approach,
+                        avg_dist=avg_dist,
+                        inferred_last=inferred[-1],
+                        ref_heading=ref_heading,
+                        heading_error=heading_error,
+                        result="reject",
+                        reason="heading_error_too_large",
+                    )
+                    continue
+        
+        # skip if the last 3 inferred distances are NOT consistently decreasing
+        if (len(inferred) >= 3 and
+                inferred[-1] > inferred[-2] and
+                inferred[-2] > inferred[-3]):
+            add_debug_row(
+                file,
+                candidate_intersection,
+                candidate_approach,
+                avg_dist=avg_dist,
+                inferred_last=inferred[-1],
+                ref_heading=ref_heading,
+                heading_error=heading_error,
+                result="reject",
+                reason="distance_increasing_wrong_direction",
+            )
+            continue
+
+        add_debug_row(
+            file,
+            candidate_intersection,
+            candidate_approach,
+            avg_dist=avg_dist,
+            inferred_last=inferred[-1],
+            ref_heading=ref_heading,
+            heading_error=heading_error,
+            result="accept",
+            reason="passed_all_filters",
+        )
         
         if avg_dist < best_distance:
             best_distance = avg_dist
             best_match = {
                 "file": file,
-                "intersection_id": df["intersection_id"].iloc[0],
-                "approach_id": df["approach_id"].iloc[0],
+                "intersection_id": candidate_intersection,
+                "approach_id": candidate_approach,
                 "avg_distance_m": avg_dist,
             }
+
+    if debug_csv_file is not None and debug_rows:
+        selected_file = os.path.abspath(best_match["file"]) if best_match is not None else None
+        for row in debug_rows:
+            candidate_file = row.get("candidate_ref_file")
+            if selected_file is not None and candidate_file:
+                row["selected"] = os.path.basename(selected_file) == candidate_file
+        fieldnames = [
+            "timestamp",
+            "idx",
+            "detect_stage",
+            "current_ref_file",
+            "current_intersection",
+            "current_approach",
+            "speed_mps",
+            "exclude_ref_file",
+            "candidate_ref_file",
+            "candidate_intersection",
+            "candidate_approach",
+            "live_heading_deg",
+            "heading_source",
+            "gps_heading_distance_m",
+            "ref_heading_deg",
+            "heading_error_deg",
+            "heading_limit_deg",
+            "avg_distance_m",
+            "inferred_distance_to_stopbar",
+            "result",
+            "reason",
+            "selected",
+        ]
+        file_exists = os.path.exists(debug_csv_file)
+        with open(debug_csv_file, mode="a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerows(debug_rows)
 
     return best_match
 

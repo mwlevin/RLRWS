@@ -7,6 +7,7 @@ from matplotlib import pyplot as plt
 from time_convert import *
 from coord2dist import *
 import socket
+import traceback
 
 
 from cav_data import *
@@ -57,8 +58,6 @@ s_rec.setblocking(False)
 #prediction_list = []
 pos_ego = 1000
 while True:
-    if pos_ego<=-50:
-        break
     # for event in pygame.event.get():
     #     if (event.type == KEYUP):
     #         print( "key pressed")
@@ -78,29 +77,49 @@ while True:
                 # keepReceiving = False
                 break
         if newestData:
-            data_orig = pkl.loads(newestData)
-            spd_ego = data_orig.spd
-            pos_ego = data_orig.loc
-            ff_spd = data_orig.ff_spd
-            predicted_tl_state = data_orig.predicted_state
-            
-            # update ff_speed
-            # ---- NEW: push fresh free-flow speed into UKF params ----
-            ukf_param.update_ff_speed(data_orig.ff_spd)
-            
-            pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, spd_pred_ego = prediction(
-                pos_ego, spd_ego, predicted_tl_state, filter_ukf, ukf_param, sim_param
-            )
-            pred_data = PredData(pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego,
-                                 spd_pred_ego, predicted_tl_state, pos_ego, spd_ego)
-            pred_data_obj = pkl.dumps(pred_data)
-            msg_data_obj=pkl.dumps(data_orig)
-          #  cav_msg_list.append(data_orig)
-          #  prediction_list.append(pred_data)
-          #  print('prediction', pos_pred_ego[0:5,0])
-            s_send.sendto(pred_data_obj, (HOST_SEND, PORT_SEND))
-            s_send1.sendto(msg_data_obj, (HOST_SEND1, PORT_SEND1))
-            print(" sent workss")
+            try:
+                data_orig = pkl.loads(newestData)
+                spd_ego = data_orig.spd
+                pos_ego = data_orig.loc
+                ff_spd = data_orig.ff_spd
+                predicted_tl_state = data_orig.predicted_state
+                current_ref_file = getattr(data_orig, "current_ref_file", None)
+                current_intersection = getattr(data_orig, "current_intersection", None)
+                current_approach = getattr(data_orig, "current_approach", None)
+
+                if pos_ego <= -50:
+                    print(f"[prediction] vehicle passed stop bar, pos_ego={pos_ego:.2f}; continuing")
+
+                # update ff_speed
+                # ---- NEW: push fresh free-flow speed into UKF params ----
+                ukf_param.update_ff_speed(ff_spd)
+
+                pos_pred_ego, pos_pred_max_ego, pos_pred_min_ego, spd_pred_ego = prediction(
+                    pos_ego, spd_ego, predicted_tl_state, filter_ukf, ukf_param, sim_param
+                )
+                pred_data = PredData(
+                    pos_pred_ego,
+                    pos_pred_max_ego,
+                    pos_pred_min_ego,
+                    spd_pred_ego,
+                    predicted_tl_state,
+                    pos_ego,
+                    spd_ego,
+                    current_ref_file,
+                    current_intersection,
+                    current_approach,
+                )
+                pred_data_obj = pkl.dumps(pred_data)
+                msg_data_obj=pkl.dumps(data_orig)
+              #  cav_msg_list.append(data_orig)
+              #  prediction_list.append(pred_data)
+              #  print('prediction', pos_pred_ego[0:5,0])
+                s_send.sendto(pred_data_obj, (HOST_SEND, PORT_SEND))
+                s_send1.sendto(msg_data_obj, (HOST_SEND1, PORT_SEND1))
+                print(" sent workss")
+            except Exception as e:
+                print(f"[prediction] skipped bad packet: {e}")
+                traceback.print_exc()
 #with open("record_data6/cav_msg_list.obj", "wb") as handle:
 #    pkl.dump(cav_msg_list, handle, protocol=pkl.HIGHEST_PROTOCOL)
 #with open("record_data6/prediction_list.obj", "wb") as handle:
