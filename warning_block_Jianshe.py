@@ -148,6 +148,7 @@ def make_record_row(current_time, pos_ego, spd_ego, warning_signal,
         "tl_change_step": tl_change_step,
         "tl_change_time_s": tl_change_time_s,
         "tl_first_20": tl_first_20,
+        "warning_0": warning_signal[0],
         "MPC_warning": warning_signal[0],
         "warning_1": warning_signal[1],
         "warning_2": warning_signal[2],
@@ -155,6 +156,7 @@ def make_record_row(current_time, pos_ego, spd_ego, warning_signal,
         "warning_4": warning_signal[4],
         "warning_5": warning_signal[5],
         "predicted_tl_state": predicted_tl_state,
+        "computed_warning": warning_showed,
         "ILC_warning": warning_showed,
     }
 
@@ -200,14 +202,27 @@ def load_ilc_data(csv_path):
 
     pos_ego_list  = df['pos_ego'].tolist()
     spd_ego_list  = df['spd_ego'].tolist()
-    warning_list  = df['warning_2'].tolist()  # primary warning channel (same as before)
+    if 'warning_2' in df.columns:
+        warning_list = df['warning_2'].tolist()  # primary warning channel (same as before)
+    elif 'warning_0' in df.columns:
+        warning_list = df['warning_0'].tolist()
+    else:
+        warning_list = [0.0] * len(df)
 
     # all 6 warning channels, in case downstream needs them
-    warning_cols = ['warning_0','warning_1','warning_2',
-                    'warning_3','warning_4','warning_5']
+    warning_cols = ['warning_0', 'warning_1', 'warning_2',
+                    'warning_3', 'warning_4', 'warning_5']
+    for warning_col in warning_cols:
+        if warning_col not in df.columns:
+            df[warning_col] = 0.0
     warning_matrix = df[warning_cols].values.tolist()   # list of 6-element lists
 
-    computed_warning_list = df['computed_warning'].tolist()
+    if 'computed_warning' in df.columns:
+        computed_warning_list = df['computed_warning'].tolist()
+    elif 'ILC_warning' in df.columns:
+        computed_warning_list = df['ILC_warning'].tolist()
+    else:
+        computed_warning_list = [0.0] * len(df)
 
     def extract_first_tl(tl_str):
         numbers = re.findall(r'[\d.]+', str(tl_str))
@@ -393,10 +408,10 @@ while True:
                                 "T_cal": T_cal1
                             })
 
-                            a_cal = (a_cal1*0.7+a_cal*0.3)
-                            d_cal = (d_cal*0.3+d_cal1*0.7)
-                            c_cal = (c_cal *0.3+ c_cal1* 0.7)
-                            T_cal = (T_cal *0.3+ T_cal1 *0.7)
+                            a_cal = (a_cal1*0.8+a_cal*0.2)
+                            d_cal = (d_cal*0.2+d_cal1*0.8)
+                            c_cal = (c_cal *0.2+ c_cal1* 0.8)
+                            T_cal = (T_cal *0.2+ T_cal1 *0.8)
                             print(f"[ILC] Done. a={a_cal:.4f} d={d_cal:.4f} c={c_cal:.4f} T={T_cal:.4f}")
                         else:
                             print("[ILC] Not enough data yet.")
