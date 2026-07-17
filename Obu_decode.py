@@ -6,11 +6,11 @@ import socket
 from pycmssdk import FacMsgType, FacNotifData,create_cms_api
 from pycmssdk import FacMsgType, FacNotifData,  create_cms_api
 
-# from pycmssdk import Asn1Type, asn1_decode
+# from pycmssdk import Asn1Type, asn1_decode    # uncomment this for mac machine
 
-# from pycmssdk.asn1 import Asn1Type
+from pycmssdk.asn1 import Asn1Type          # uncomment this for linux machine
 
-# from pycmssdk.asn1 import asn1_decode
+from pycmssdk.asn1 import asn1_decode       # uncomment this for linux machine
 
 from time_convert import *
 import pickle as pkl
@@ -133,6 +133,7 @@ phaseid = 2
 dist_counter = 0
 live_points = []
 idx=0
+best_ref = None
 
 #42/18
 #S/N going straightSignal_id=8
@@ -164,26 +165,30 @@ while True:
                 break
         if newestData:
             decoded_message = unwrap_and_decode(newestData)
-            
+            if decoded_message is None:          # <-- add this
+                continue
             if decoded_message["value"][0] == "SPAT":
                 
-                print(" got Spat , with id ", decoded_message["value"][1]["intersections"]["id"] )      
-                if decoded_message["value"][1]["intersections"]["id"] == signal_id:
-                
+                # print(" got Spat , with id ", decoded_message["value"][1]["intersections"][0]["id"]["id"] ) 
+                # print("target id is ", signal_id)     
+                if decoded_message["value"][1]["intersections"][0]["id"]["id"] == signal_id:
+
 
 
                     # decoded_message["value"][1]["intersections"] is a LIST
-                    intersections = decoded_message["value"][1]["intersections"]["id"]
+                    intersections = decoded_message["value"][1]["intersections"][0]
 
                     # pick the intersection dict whose id matches TARGET_INTERSECTION_ID
                     SPaT_data = decoded_message["value"][1]["intersections"][0]
+                    # print("Spat data is ", SPaT_data)
+
                     # ---- IMPORTANT: if not found, skip this message ----
                     if SPaT_data is None:
                         # optional debug: show what IDs exist
                         print("Target not found")
                         continue
                 #  SPaT_data = decoded_message["value"][1]["intersections"][0]
-                    print("SPaT intersection ID =", SPaT_data["id"]["id"])
+                    # print("SPaT intersection ID =", SPaT_data["id"]["id"])
                 # SPaT_data = decoded_message["value"][1]["intersections"][0]
 
                     moy = SPaT_data["moy"]
@@ -192,13 +197,13 @@ while True:
                     sec_of_minute = ms_to_sec(time_stamp)
                     signal_data = SPaT_data["states"][phaseid-1]["state-time-speed"][0]                                
                     if signal_data["eventState"] in red_status:
-                        # print("signal is red")
+                        print("signal is red")
                         signal_status = "red"
                     elif signal_data["eventState"] in yellow_status:
-                        # print("signal is yellow")
+                        print("signal is yellow")
                         signal_status = "yellow"
                     elif signal_data["eventState"] in green_status:
-                        # print("signal is green")
+                        print("signal is green")
                         signal_status = "green"
                     min_end_time = signal_data["timing"]["minEndTime"]
                     max_end_time = signal_data["timing"]["maxEndTime"]
@@ -227,6 +232,9 @@ while True:
                 break
         if newestData:
             decoded_message = unwrap_and_decode(newestData)
+            # print("HII" , decoded_message)
+            if decoded_message is None:          # <-- add this
+                continue
             if decoded_message["value"][0] == "BasicSafetyMessage":
                 latitude  = decoded_message["value"][1]["coreData"]["lat"]  * 1e-7
                 longitude = decoded_message["value"][1]["coreData"]["long"] * 1e-7
@@ -238,15 +246,15 @@ while True:
                     live_points = live_points[-LOOKAHEAD_POINTS-2:]
 
                 cum_dist = 1500  # default if we can't compute yetç
-                print(latitude)
-                print(longitude,"long")
+
 
                 # -------- BOOTSTRAP: collect first LOOKAHEAD_POINTS samples ----------
-                print(" len live is ", len(live_points), " boot ",  bootstrap_done)
+                # print(" len live is ", len(live_points), " boot ",  bootstrap_done)
                 if not bootstrap_done:
                     if len(live_points) >= LOOKAHEAD_POINTS:
                         best_ref = detect_reference_trajectory(
                             live_points, folder, n_points=LOOKAHEAD_POINTS)
+                        
                         if best_ref is not None:
                             current_ref_file     = best_ref["file"]
                             current_ref_np       = load_reference_np(current_ref_file)
@@ -356,7 +364,9 @@ while True:
                 predicted_state[0:step_to_change,0] = 0
                 predicted_state[step_to_change:,0] = -1
     cav_data = CavData(predicted_state, cum_dist, speed)
-    print('  distance  ', cum_dist, ' appraoch ' , best_ref)
+
+    if best_ref is not None:
+        print('  distance  ', cum_dist, ' appraoch ' , best_ref)
     if signal_status is not None:
         print('signal status', signal_status)
         #print('min change', sec_to_change_min)

@@ -1,5 +1,6 @@
 import sys
 import pickle as pkl
+import traceback
 
 import datetime
 import numpy as np
@@ -148,7 +149,6 @@ def make_record_row(current_time, pos_ego, spd_ego, warning_signal,
         "tl_change_step": tl_change_step,
         "tl_change_time_s": tl_change_time_s,
         "tl_first_20": tl_first_20,
-        "warning_0": warning_signal[0],
         "MPC_warning": warning_signal[0],
         "warning_1": warning_signal[1],
         "warning_2": warning_signal[2],
@@ -156,7 +156,6 @@ def make_record_row(current_time, pos_ego, spd_ego, warning_signal,
         "warning_4": warning_signal[4],
         "warning_5": warning_signal[5],
         "predicted_tl_state": predicted_tl_state,
-        "computed_warning": warning_showed,
         "ILC_warning": warning_showed,
     }
 
@@ -202,27 +201,14 @@ def load_ilc_data(csv_path):
 
     pos_ego_list  = df['pos_ego'].tolist()
     spd_ego_list  = df['spd_ego'].tolist()
-    if 'warning_2' in df.columns:
-        warning_list = df['warning_2'].tolist()  # primary warning channel (same as before)
-    elif 'warning_0' in df.columns:
-        warning_list = df['warning_0'].tolist()
-    else:
-        warning_list = [0.0] * len(df)
+    warning_list  = df['warning_2'].tolist()  # primary warning channel (same as before)
 
     # all 6 warning channels, in case downstream needs them
-    warning_cols = ['warning_0', 'warning_1', 'warning_2',
-                    'warning_3', 'warning_4', 'warning_5']
-    for warning_col in warning_cols:
-        if warning_col not in df.columns:
-            df[warning_col] = 0.0
+    warning_cols = ['MPC_warning','warning_1','warning_2',
+                'warning_3','warning_4','warning_5']
     warning_matrix = df[warning_cols].values.tolist()   # list of 6-element lists
 
-    if 'computed_warning' in df.columns:
-        computed_warning_list = df['computed_warning'].tolist()
-    elif 'ILC_warning' in df.columns:
-        computed_warning_list = df['ILC_warning'].tolist()
-    else:
-        computed_warning_list = [0.0] * len(df)
+    computed_warning_list = df['ILC_warning'].tolist()
 
     def extract_first_tl(tl_str):
         numbers = re.findall(r'[\d.]+', str(tl_str))
@@ -371,6 +357,7 @@ while True:
             # print(f"[ILC] Row saved to {Calibrate_data}")
             
             # write to calibrate_data only if we have a warning
+            print
             if warning_signal[0] > 0.01 and warning_signal[1] > 0.01:
                 append_csv_row(Calibrate_data, row)
             
@@ -383,6 +370,7 @@ while True:
                 last_calibration_time = now
                 # Recalibrate
                 try:
+                    print(os.path.exists(Calibrate_data))
                     if os.path.exists(Calibrate_data):
                         start = time.time()  # ← start timing HERE, right before calibration
                         warning_ilc, acc_ilc, spd_ilc, spacing_ilc, tls_ilc = load_ilc_data(Calibrate_data)
@@ -408,15 +396,16 @@ while True:
                                 "T_cal": T_cal1
                             })
 
-                            a_cal = (a_cal1*0.8+a_cal*0.2)
-                            d_cal = (d_cal*0.2+d_cal1*0.8)
-                            c_cal = (c_cal *0.2+ c_cal1* 0.8)
-                            T_cal = (T_cal *0.2+ T_cal1 *0.8)
+                            a_cal = (a_cal1*0.7+a_cal*0.3)
+                            d_cal = (d_cal*0.3+d_cal1*0.7)
+                            c_cal = (c_cal *0.3+ c_cal1* 0.7)
+                            T_cal = (T_cal *0.3+ T_cal1 *0.7)
                             print(f"[ILC] Done. a={a_cal:.4f} d={d_cal:.4f} c={c_cal:.4f} T={T_cal:.4f}")
                         else:
                             print("[ILC] Not enough data yet.")
                 except Exception as e:
-                    print(f"[ILC] Calibration error: {e}")
+                    print("[ILC] Calibration error:")
+                    traceback.print_exc()
                 
             
             # --- Save updated ILC params to CSV ---
@@ -428,13 +417,7 @@ while True:
 
 
 
-# # save data to csv for ILC training            
-# df = pd.DataFrame(rows)
 
-# csv_path = "warning_log.csv"
-# df.to_csv(csv_path, index=False)
-
-# print(f"CSV successfully saved to {csv_path}")
 
 
 

@@ -676,3 +676,13 @@ ref_file,intersection,approach,ff_speed,cum_dist
 3116,ref_5_NWSE.csv,5,NWSE,22.352,347.84
 3295,ref_5_SWNE.csv,5,SWNE,13.4112,123.75
 3763,ref_5_SENW.csv,5,SENW,22.352,276.13
+1173,ref_2_NS.csv,2,NS,24.5872,0.01
+1383,ref_2_WE.csv,2,WE,24.5872,239.64
+601,ref_2_NS.csv,2,NS,24.5872,-0.01
+705,ref_2_NS.csv,2,NS,24.5872,0.75
+715,ref_2_EW.csv,2,EW,24.5872,2.04
+1073,ref_2_NS.csv,2,NS,24.5872,0.01
+1293,ref_2_WE.csv,2,WE,24.5872,226.72
+1543,ref_2_NS.csv,2,NS,24.5872,-0.01
+1553,ref_2_WE.csv,2,WE,24.5872,10.5
+1181,ref_1_SWNE.csv,1,SWNE,24.5872,1347.81
