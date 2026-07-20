@@ -325,6 +325,7 @@ while True:
             # enforce passer filter: red message
             if passer(pos_ego, spd_ego, predicted_tl_state):
                 warning_signal[0] = Yellow_limit + 5  
+                warning_showed = Yellow_limit + 5
                 # warning_showed = warning_signal[0]
                 
                   
