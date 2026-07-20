@@ -324,9 +324,8 @@ while True:
                 
             # enforce passer filter: red message
             if passer(pos_ego, spd_ego, predicted_tl_state):
-                warning_signal[0] = Yellow_limit + 5  
-                warning_showed = Yellow_limit + 5
-                # warning_showed = warning_signal[0]
+                warning_signal[0] = Yellow_limit + 5         
+                warning_showed = Yellow_limit + 5           # new, ILC gets same as MPC when stopped 
                 
                   
             # send warning value for plotting
