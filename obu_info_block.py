@@ -1,10 +1,10 @@
 import socket
 from pycmssdk import FacMsgType, FacNotifData,create_cms_api
-from pycmssdk import Asn1Type, FacMsgType, FacNotifData, asn1_decode, create_cms_api
+from pycmssdk import  FacMsgType, FacNotifData,  create_cms_api
 
-# from pycmssdk.asn1 import Asn1Type
+from pycmssdk.asn1 import Asn1Type
 
-# from pycmssdk.asn1 import asn1_decode
+from pycmssdk.asn1 import asn1_decode
 
 from distance_finder import *
 

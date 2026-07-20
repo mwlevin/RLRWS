@@ -104,18 +104,18 @@ class IDM_Param():
         self.high_buffer = 1.2
         self.lb = 1  # a lower bound for a, b, T, s0 values
         self.lb_speed = 5 # lower band for v0
-        self.lb_ac = 0.4
+        self.lb_ac = 0.2      # 0.4 test
         self.ub_ac = 4.5
         self.lb_dec = 0.5
         self.ub_dec = 4.5
         self.lb_time = 0.5
         self.ub_time = 2
         
-        self.lb_d = 0.08
+        self.lb_d =  0.06   #  0.08  test
     
         self.ub_d = 2
         
-        self.lb_c = 0.8
+        self.lb_c =  0.5         # 0.8 test    
         self.ub_c = 2
         
     def set_a (self, a_cal):

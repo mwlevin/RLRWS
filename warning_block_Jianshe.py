@@ -46,6 +46,12 @@ Record_data = os.path.join(Run_data_dir, "record_data.csv")
 Calibrate_data = os.path.join(Run_data_dir, "calibrate_data.csv")
 ILC_params_file = os.path.join(Run_data_dir, "ilc_params_log.csv")
 
+# Seed the calibrate CSV from a pre-filled reference so mainIDM has data on first run
+CALIBRATE_SEED = "calibrate_data_reference.csv"   # path to your pre-filled file
+if os.path.exists(CALIBRATE_SEED) and not os.path.exists(Calibrate_data):
+    import shutil
+    shutil.copy(CALIBRATE_SEED, Calibrate_data)
+    print(f"[ILC] Seeded {Calibrate_data} from {CALIBRATE_SEED}")
 
 Yellow_limit = 30  # at warning = 30, we switch from yellow to red
 
@@ -319,7 +325,7 @@ while True:
             # enforce passer filter: red message
             if passer(pos_ego, spd_ego, predicted_tl_state):
                 warning_signal[0] = Yellow_limit + 5  
-                warning_showed = warning_signal[0]
+                # warning_showed = warning_signal[0]
                 
                   
             # send warning value for plotting
@@ -330,7 +336,7 @@ while True:
             
             
             # Scalar - just send MPC warning for now, later we should send ILC warning instead, 
-            warning_showed_obj = pkl.dumps(warning_signal[0])
+            warning_showed_obj = pkl.dumps(warning_showed)
             #warning_showed_obj = pkl.dumps(warning_showed)
             s_send.sendto(warning_showed_obj, (HOST_SEND, PORT_SEND))
 
@@ -396,10 +402,10 @@ while True:
                                 "T_cal": T_cal1
                             })
 
-                            a_cal = (a_cal1*0.7+a_cal*0.3)
-                            d_cal = (d_cal*0.3+d_cal1*0.7)
-                            c_cal = (c_cal *0.3+ c_cal1* 0.7)
-                            T_cal = (T_cal *0.3+ T_cal1 *0.7)
+                            a_cal = (a_cal1*0.5+a_cal*0.5)
+                            d_cal = (d_cal*0.5+d_cal1*0.5)
+                            c_cal = (c_cal *0.5+ c_cal1* 0.5)
+                            T_cal = (T_cal *0.5+ T_cal1 *0.5)
                             print(f"[ILC] Done. a={a_cal:.4f} d={d_cal:.4f} c={c_cal:.4f} T={T_cal:.4f}")
                         else:
                             print("[ILC] Not enough data yet.")
