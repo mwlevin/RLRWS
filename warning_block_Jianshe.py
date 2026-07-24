@@ -316,7 +316,7 @@ while True:
                 warning_showed=0
                 
             # if wrong detected to be very close to intersection, we set warning to 0 to avoid false positive
-            if pos_ego < 2 and spd_ego > 18:
+            if pos_ego < 3 and spd_ego > 18:
                 warning_showed = 0
                 warning_signal[0] = 0
                 
@@ -327,7 +327,11 @@ while True:
                 warning_signal[0] = Yellow_limit + 5         
                 warning_showed = Yellow_limit + 5           # new, ILC gets same as MPC when stopped 
                 
-                  
+            # ensure reasoanble value
+            if warning_signal[0] <= 20 and warning_showed > 50:
+                warning_showed = warning_signal[0] * 1.5  # max buffer 1.5
+
+
             # send warning value for plotting
             print("MPC warning ", warning_signal[0])
             print('warning_showned',warning_showed)
