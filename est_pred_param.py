@@ -28,7 +28,7 @@ class SimParameter:
         self.min_following_distance = 5
         
         # maximum deceleration
-        self.max_dec = -4.5
+        self.max_dec = -3.4
         # maximum acceleartion
         self.max_acc = 2.5
         # desired time headway
